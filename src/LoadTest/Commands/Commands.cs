@@ -15,7 +15,7 @@ public static class Commands
 
     private static Command BuildLoadTestCommand()
     {
-        var runCommand = new Command("run", "Run a load test.")
+        var runCommand = new Command("run", "Run a load test on a given set of URLs. Does not spider.")
         {
             CommandOptions.PathOption,
             CommandOptions.ThreadCountOption,
@@ -32,6 +32,7 @@ public static class Commands
         {
             var config = new LoadTesterConfiguration
             {
+                SitemapUrl = context.GetValueForOptionEnsureNotNull(CommandOptions.PathOption),
                 ThreadCount = context.GetValueForOptionEnsureNotNull(CommandOptions.ThreadCountOption),
                 SecondsToRun = context.GetValueForOptionEnsureNotNull(CommandOptions.SecondsToRunOption),
                 ChanceOf404 = context.GetValueForOptionEnsureNotNull(CommandOptions.ChanceOf404Option),
@@ -44,10 +45,7 @@ public static class Commands
                 IsVerbose = context.GetValueForOptionEnsureNotNull(CommandOptions.VerboseOption),
             };
 
-            var path = context.GetValueForOptionEnsureNotNull(CommandOptions.PathOption);
-            var urls = await UrlsRetriever.GetUrlsAsync(path, context.GetCancellationToken());
-
-            context.ExitCode = await LoadTester.RunLoadTestAsync(config, urls, context.GetCancellationToken());
+            await LoadTester.RunLoadTestAsync(config, context.GetCancellationToken());
         });
 
         return runCommand;
@@ -68,7 +66,7 @@ public static class Commands
             var path = context.GetValueForOptionEnsureNotNull(CommandOptions.PathOption);
             var outputPath = context.GetValueForOptionEnsureNotNull(CommandOptions.OutputPathOption);
 
-            context.ExitCode = await UrlsRetriever.SaveUrlsAsync(path, outputPath, context.GetCancellationToken());
+            await UrlsRetriever.SaveUrlsAsync(path, outputPath, context.GetCancellationToken());
         });
 
         return makeListCommand;
@@ -93,6 +91,7 @@ public static class Commands
         {
             var config = new PageArchiverConfiguration
             {
+                SitemapUrl = context.GetValueForOptionEnsureNotNull(CommandOptions.PathOption),
                 OutputPath = context.GetValueForOptionEnsureNotNull(CommandOptions.OutputPathOption),
                 ThreadCount = context.GetValueForOptionEnsureNotNull(CommandOptions.ThreadCountOption),
                 IsDelayEnabled = context.GetValueForOptionEnsureNotNull(CommandOptions.DelayOption),
@@ -101,10 +100,7 @@ public static class Commands
                 IsVerbose = context.GetValueForOptionEnsureNotNull(CommandOptions.VerboseOption),
             };
 
-            var path = context.GetValueForOptionEnsureNotNull(CommandOptions.PathOption);
-            var urls = await UrlsRetriever.GetUrlsAsync(path, context.GetCancellationToken());
-
-            context.ExitCode = await PageArchiver.ArchiveHtmlAsync(config, urls, context.GetCancellationToken());
+            await PageArchiver.ArchiveHtmlAsync(config, context.GetCancellationToken());
         });
 
         return archivePagesCommand;

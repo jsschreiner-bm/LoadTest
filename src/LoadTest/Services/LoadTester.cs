@@ -9,12 +9,14 @@ public static class LoadTester
     /// <summary>
     /// Request URLs and log metrics.
     /// </summary>
-    public static async Task<int> RunLoadTestAsync(LoadTesterConfiguration config, string[] urls, CancellationToken cancellationToken)
+    public static async Task RunLoadTestAsync(LoadTesterConfiguration config, CancellationToken cancellationToken)
     {
+        var urls = await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken);
+
         if (urls.Length == 0)
         {
             Console.WriteLine("No URLs found. Exiting.");
-            return 1;
+            return;
         }
 
         Console.WriteLine("Running load test. Press Ctrl+C to stop.");
@@ -54,8 +56,6 @@ public static class LoadTester
 
         var missedPercent = (double)metrics.MissedRequestCount / metrics.RequestCount * 100;
         Console.WriteLine($"{metrics.MissedRequestCount} unintended missed requests = {missedPercent:F2}%");
-
-        return 0;
     }
 
     private static async Task<LoadTesterThreadMetrics> StartThreadAsync(int threadNumber, string[] urls, long startTime, LoadTesterConfiguration config, HttpClient client, CancellationToken cancellationToken)

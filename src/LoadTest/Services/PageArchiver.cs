@@ -9,62 +9,57 @@ public static class PageArchiver
     /// <summary>
     /// Saves a copy of the page HTML.
     /// </summary>
-    public static async Task<int> ArchiveHtmlAsync(PageArchiverConfiguration config, string[] urls, CancellationToken cancellationToken)
+    public static async Task ArchiveHtmlAsync(PageArchiverConfiguration config, CancellationToken cancellationToken)
     {
-        try
+        // TODO: Spider pages.
+        // TODO: Add no-save option. Add reports and html folder path.
+        // TODO: Add search regex?
+        var urls = await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken);
+
+        if (urls.Length == 0)
         {
-            if (urls.Length == 0)
-            {
-                Console.WriteLine("No URLs found. Exiting.");
-                return 1;
-            }
-
-            Console.WriteLine("Performing HTML archive. Press Ctrl+C to stop.");
-
-            var startTime = Stopwatch.GetTimestamp();
-
-            using var client = new HtmlContentRetriever(config);
-            await client.Init();
-
-            var tasks = Enumerable
-                .Range(0, config.ThreadCount)
-                .Select(i => StartThreadAsync(i, urls, config, client, cancellationToken))
-                .ToArray();
-
-            var metricCollection = await Task.WhenAll(tasks);
-
-            var metrics = metricCollection.Aggregate(new LoadTesterThreadMetrics(), (acc, x) =>
-            {
-                acc.RequestCount += x.RequestCount;
-                acc.MissedRequestCount += x.MissedRequestCount;
-                return acc;
-            });
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                Console.WriteLine("Cancelled.");
-            }
-            else
-            {
-                Console.WriteLine("Finished.");
-            }
-
-            var elapsedTime = Stopwatch.GetElapsedTime(startTime);
-            var seconds = elapsedTime.TotalMilliseconds / 1000;
-            var safeSeconds = seconds == 0 ? 1 : seconds;
-
-            Console.WriteLine($"{metrics.RequestCount} requests in {elapsedTime} = {metrics.RequestCount / safeSeconds:F2} RPS");
-
-            var missedPercent = (double)metrics.MissedRequestCount / metrics.RequestCount * 100;
-            Console.WriteLine($"{metrics.MissedRequestCount} unintended missed requests = {missedPercent:F2}%");
-
-            return 0;
+            Console.WriteLine("No URLs found. Exiting.");
+            return;
         }
-        catch
+
+        Console.WriteLine("Performing HTML archive. Press Ctrl+C to stop.");
+
+        var startTime = Stopwatch.GetTimestamp();
+
+        using var client = new HtmlContentRetriever(config);
+        await client.Init();
+
+        var tasks = Enumerable
+            .Range(0, config.ThreadCount)
+            .Select(i => StartThreadAsync(i, urls, config, client, cancellationToken))
+            .ToArray();
+
+        var metricCollection = await Task.WhenAll(tasks);
+
+        var metrics = metricCollection.Aggregate(new LoadTesterThreadMetrics(), (acc, x) =>
         {
-            // This handles our cancellation requests and closes the scope to dispose of HtmlContentRetriever.
-            return 1;
+            acc.RequestCount += x.RequestCount;
+            acc.MissedRequestCount += x.MissedRequestCount;
+            return acc;
+        });
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            Console.WriteLine("Cancelled.");
         }
+        else
+        {
+            Console.WriteLine("Finished.");
+        }
+
+        var elapsedTime = Stopwatch.GetElapsedTime(startTime);
+        var seconds = elapsedTime.TotalMilliseconds / 1000;
+        var safeSeconds = seconds == 0 ? 1 : seconds;
+
+        Console.WriteLine($"{metrics.RequestCount} requests in {elapsedTime} = {metrics.RequestCount / safeSeconds:F2} RPS");
+
+        var missedPercent = (double)metrics.MissedRequestCount / metrics.RequestCount * 100;
+        Console.WriteLine($"{metrics.MissedRequestCount} unintended missed requests = {missedPercent:F2}%");
     }
 
     private static async Task<LoadTesterThreadMetrics> StartThreadAsync(int threadNumber, string[] urls, PageArchiverConfiguration config, HtmlContentRetriever client, CancellationToken cancellationToken)

@@ -2,6 +2,7 @@
 
 public class LoadTesterConfiguration
 {
+    public string SitemapUrl { get; set; } = string.Empty;
     public int ThreadCount { get; init; }
     public int SecondsToRun { get; init; }
     public int ChanceOf404 { get; init; }

@@ -24,13 +24,12 @@ public static class UrlsRetriever
     /// <summary>
     /// Get URLs and save them to a local file.
     /// </summary>
-    public static async Task<int> SaveUrlsAsync(string path, string outputPath, CancellationToken cancellationToken)
+    public static async Task SaveUrlsAsync(string path, string outputPath, CancellationToken cancellationToken)
     {
         var urls = await GetUrlsAsync(path, cancellationToken);
 
         Console.WriteLine($"Writing URLs to {outputPath}.");
         await File.WriteAllLinesAsync(outputPath, urls, cancellationToken);
-        return 0;
     }
 
     private static async Task<string[]> GetUrlsFromUrlListFileAsync(string filePath, CancellationToken cancellationToken)
