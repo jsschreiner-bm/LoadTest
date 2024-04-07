@@ -10,16 +10,14 @@ public class PageArchiverConfiguration
     public int ThreadCount { get; init; }
     public bool IsDelayEnabled { get; init; }
     public bool IsVerbose { get; init; }
-
     // TODO: check for unused props
     public bool IsSpiderEnabled { get; init; }
-    public string PrimaryUrlBase { get; set; } = string.Empty;
-    public List<string> PrimaryUrlBaseEquivalents { get; init; } = new();
+    public string PrimaryDomain { get; set; } = string.Empty;
+    public List<string> PrimaryDomainEquivalents { get; init; } = [];
     public bool ScanCrossDomainRedirects { get; set; }
-    public List<string> ExcludedPaths { get; init; } = new();
-
+    public List<string> ExcludedPaths { get; init; } = [];
     // TODO: for search
-    // public List<string> SearchTerms { get; init; } = new();
-    // public string MainContentSelector { get; init; } = string.Empty;
-    // public string ExcludeContentSelector { get; init; } = string.Empty;
+    public List<string> SearchTerms { get; init; } = [];
+    public string MainContentSelector { get; init; } = string.Empty;
+    public string ExcludeContentSelector { get; init; } = string.Empty;
 }

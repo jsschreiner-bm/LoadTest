@@ -1,4 +1,5 @@
-﻿using PuppeteerSharp;
+﻿using LoadTest.Helpers;
+using PuppeteerSharp;
 
 namespace LoadTest.Services;
 
@@ -30,14 +31,14 @@ public class HtmlContentRetriever : IDisposable
         });
     }
 
-    public async Task<string> GetContentAsync(string url, CancellationToken cancellationToken)
+    public async Task<HtmlContentRetrieverResult> GetContentAsync(Uri uri, CancellationToken cancellationToken)
     {
         return _config.UseBrowser ?
-            await GetBrowserContentAsync(url, cancellationToken) :
-            await GetServerContentAsync(url, cancellationToken);
+            await GetBrowserContentAsync(uri, cancellationToken) :
+            await GetServerContentAsync(uri, cancellationToken);
     }
 
-    private async Task<string> GetBrowserContentAsync(string url, CancellationToken cancellationToken)
+    private async Task<HtmlContentRetrieverResult> GetBrowserContentAsync(Uri uri, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -47,20 +48,17 @@ public class HtmlContentRetriever : IDisposable
         {
             if (_config.LogBrowserConsoleError)
             {
-                Console.WriteLine($"Browser console error on {url}: {eventArgs.Message}");
+                Console.WriteLine($"Browser console error on {uri.OriginalString}: {eventArgs.Message}");
             }
         };
 
-        var response = await page.GoToAsync(url);
+        var response = await page.GoToAsync(uri.OriginalString);
 
-        if (!(((int)response.Status >= 200) && ((int)response.Status <= 299)))
-        {
-            throw new HttpRequestException($"Response status code does not indicate success: {(int)response.Status} ({response.Status}).");
-        }
+        response.EnsureSuccessStatusCode();
 
         if (_config.IsVerbose)
         {
-            Console.WriteLine($"{response.Status} {url}");
+            Console.WriteLine($"{response.Status} {uri.OriginalString}");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -69,23 +67,35 @@ public class HtmlContentRetriever : IDisposable
         // Alternatively, you could listen for JavaScript event if you can make the app emit one when it's done with initial rendering.
         await page.WaitForTimeoutAsync(100);
 
-        return await page.GetContentAsync();
+        // TODO: test redirects and failed requests
+        return new HtmlContentRetrieverResult
+        {
+            FinalUrl = response.Url,
+            StatusCode = (int)response.Status,
+            HtmlContent = await page.GetContentAsync(),
+        };
     }
 
-    private async Task<string> GetServerContentAsync(string url, CancellationToken cancellationToken)
+    private async Task<HtmlContentRetrieverResult> GetServerContentAsync(Uri uri, CancellationToken cancellationToken)
     {
         var client = HttpClient;
 
-        var response = await client.GetAsync(url, cancellationToken);
+        var response = await client.GetAsync(uri, cancellationToken);
 
         response.EnsureSuccessStatusCode();
 
         if (_config.IsVerbose)
         {
-            Console.WriteLine($"{response.StatusCode} {url}");
+            Console.WriteLine($"{response.StatusCode} {uri.OriginalString}");
         }
 
-        return await response.Content.ReadAsStringAsync(cancellationToken);
+        // TODO: test redirects and failed requests
+        return new HtmlContentRetrieverResult
+        {
+            FinalUrl = response.RequestMessage?.RequestUri?.OriginalString ?? string.Empty,
+            StatusCode = (int)response.StatusCode,
+            HtmlContent = await response.Content.ReadAsStringAsync(cancellationToken),
+        };
     }
 
     private IBrowser Browser => _browser ?? throw new InvalidOperationException("Call Init() before calling GetContent()");

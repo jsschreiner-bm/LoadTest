@@ -1,5 +1,7 @@
-﻿using LoadTest.Helpers;
+﻿using CsvHelper;
+using LoadTest.Helpers;
 using System.Diagnostics;
+using System.Globalization;
 using VoidCore.Model.Text;
 
 namespace LoadTest.Services;
@@ -11,6 +13,8 @@ public static class PageArchiver
     /// </summary>
     public static async Task ArchiveHtmlAsync(PageArchiverConfiguration config, CancellationToken cancellationToken)
     {
+        var csvFilePath = $"{config.OutputPath.TrimEnd('/')}/{DateTime.Now:yyyyMMdd_HHmmss}_{nameof(PageArchiver)}.csv";
+
         var uris = (await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken))
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.GetNormalizedUri(config.PrimaryUrlBase))
@@ -85,7 +89,7 @@ public static class PageArchiver
 
         using var writer = new StreamWriter(csvFilePath);
         using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
-        csv.WriteRecords(pageResults);
+        csv.WriteRecords(jobResult.PageResults);
     }
 
     private static async Task<PageArchiverResult> StartThreadAsync(int threadNumber, Uri[] urls, PageArchiverConfiguration config, HtmlContentRetriever client, bool isSpiderPass, CancellationToken cancellationToken)
@@ -105,20 +109,30 @@ public static class PageArchiver
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var url = urls[urlIndex];
-            var uri = new Uri(url);
+            var uri = urls[urlIndex] ?? throw new InvalidOperationException($"URL at index {urlIndex} is null.");
+
+            var pageResult = new PageArchiverPageResult(uri)
+            {
+                IsFoundBySpider = isSpiderPass
+            };
+
+            threadResult.PageResults.Add(pageResult);
+
+            threadResult.RequestCount++;
 
             try
             {
-                threadResult.RequestCount++;
+                // TODO: return final URL, html content and status code?
+                var page = await client.GetContentAsync(uri, cancellationToken);
 
-                var htmlContent = await client.GetContentAsync(url, cancellationToken);
+                // TODO: normalize
+                pageResult.FinalUrl = page.FinalUrl;
 
-                await SaveHtmlContent(config, uri, htmlContent, cancellationToken);
+                await SaveHtmlContent(config, uri, page.HtmlContent, cancellationToken);
 
                 // TODO: search
 
-                // TODO: spider, normalize URLs here and and initials ones.
+                // TODO: spider, normalize URLs.
             }
             catch (OperationCanceledException)
             {
@@ -126,7 +140,7 @@ public static class PageArchiver
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error archiving {url}. {ex.Message}");
+                Console.WriteLine($"Error archiving {uri.OriginalString}. {ex.Message}");
                 threadResult.MissedRequestCount++;
             }
 
