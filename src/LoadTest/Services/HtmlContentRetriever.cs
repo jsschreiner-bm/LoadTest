@@ -30,18 +30,18 @@ public class HtmlContentRetriever : IDisposable
         });
     }
 
-    public async Task<string> GetContentAsync(string url, LoadTesterThreadMetrics metrics, CancellationToken cancellationToken)
+    public async Task<string> GetContentAsync(string url, CancellationToken cancellationToken)
     {
         return _config.UseBrowser ?
-            await GetBrowserContentAsync(url, metrics, cancellationToken) :
-            await GetServerContentAsync(url, metrics, cancellationToken);
+            await GetBrowserContentAsync(url, cancellationToken) :
+            await GetServerContentAsync(url, cancellationToken);
     }
 
-    private async Task<string> GetBrowserContentAsync(string url, LoadTesterThreadMetrics metrics, CancellationToken cancellationToken)
+    private async Task<string> GetBrowserContentAsync(string url, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        using var page = await Browser.NewPageAsync();
+        await using var page = await Browser.NewPageAsync();
 
         page.PageError += (sender, eventArgs) =>
         {
@@ -52,8 +52,6 @@ public class HtmlContentRetriever : IDisposable
         };
 
         var response = await page.GoToAsync(url);
-
-        metrics.RequestCount++;
 
         if (!(((int)response.Status >= 200) && ((int)response.Status <= 299)))
         {
@@ -74,13 +72,11 @@ public class HtmlContentRetriever : IDisposable
         return await page.GetContentAsync();
     }
 
-    private async Task<string> GetServerContentAsync(string url, LoadTesterThreadMetrics metrics, CancellationToken cancellationToken)
+    private async Task<string> GetServerContentAsync(string url, CancellationToken cancellationToken)
     {
         var client = HttpClient;
 
         var response = await client.GetAsync(url, cancellationToken);
-
-        metrics.RequestCount++;
 
         response.EnsureSuccessStatusCode();
 

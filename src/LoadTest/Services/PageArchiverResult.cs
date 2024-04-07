@@ -19,6 +19,6 @@ public static class PageArchiverResultExtensions
     {
         RequestCount = metrics.RequestCount + newMetrics.RequestCount,
         MissedRequestCount = metrics.MissedRequestCount + newMetrics.MissedRequestCount,
-        PageResults = metrics.PageResults.Concat(newMetrics.PageResults).ToList(),
+        PageResults = [.. metrics.PageResults, .. newMetrics.PageResults],
     };
 }

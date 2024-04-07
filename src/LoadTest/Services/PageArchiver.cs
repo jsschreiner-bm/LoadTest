@@ -11,12 +11,15 @@ public static class PageArchiver
     /// </summary>
     public static async Task ArchiveHtmlAsync(PageArchiverConfiguration config, CancellationToken cancellationToken)
     {
-        // TODO: Spider pages.
-        // TODO: Add no-save option. Add reports and html folder path.
-        // TODO: Add search regex?
-        var urls = await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken);
+        var uris = (await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.GetNormalizedUri(config.PrimaryUrlBase))
+            .Where(x => x is not null)
+            .Where(x => !config.ExcludedPaths.Exists(y => x!.PathAndQuery.StartsWith(y)))
+            .Select(x => x!)
+            .ToArray();
 
-        if (urls.Length == 0)
+        if (uris.Length == 0)
         {
             Console.WriteLine("No URLs found. Exiting.");
             return;
@@ -24,24 +27,43 @@ public static class PageArchiver
 
         Console.WriteLine("Performing HTML archive. Press Ctrl+C to stop.");
 
-        var startTime = Stopwatch.GetTimestamp();
-
         using var client = new HtmlContentRetriever(config);
         await client.Init();
 
-        var tasks = Enumerable
-            .Range(0, config.ThreadCount)
-            .Select(i => StartThreadAsync(i, urls, config, client, cancellationToken))
-            .ToArray();
+        var startTime = Stopwatch.GetTimestamp();
 
-        var metricCollection = await Task.WhenAll(tasks);
+        var jobResult = new PageArchiverResult();
+        var spiderLinksCount = 0;
+        var passes = 0;
 
-        var metrics = metricCollection.Aggregate(new LoadTesterThreadMetrics(), (acc, x) =>
+        do
         {
-            acc.RequestCount += x.RequestCount;
-            acc.MissedRequestCount += x.MissedRequestCount;
-            return acc;
-        });
+            passes++;
+
+            var isSpiderPass = passes > 1;
+
+            var tasks = Enumerable
+                .Range(0, config.ThreadCount)
+                .Select(i => StartThreadAsync(i, uris, config, client, isSpiderPass, cancellationToken))
+                .ToArray();
+
+            var passResult = (await Task.WhenAll(tasks)).Combine();
+
+            var previousUrls = jobResult.PageResults
+                .Select(y => y.Url.ToString())
+                .ToArray();
+
+            var newSpiderLinks = passResult.PageResults
+                .SelectMany(x => x.SpiderLinks)
+                .Distinct()
+                .Where(x => !config.ExcludedPaths.Exists(y => x.PathAndQuery.StartsWith(y)) && !previousUrls.Contains(x.ToString(), StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+
+            uris = newSpiderLinks;
+            spiderLinksCount += newSpiderLinks.Length;
+
+            jobResult = jobResult.Combine(passResult);
+        } while (uris.Length > 0);
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -56,114 +78,114 @@ public static class PageArchiver
         var seconds = elapsedTime.TotalMilliseconds / 1000;
         var safeSeconds = seconds == 0 ? 1 : seconds;
 
-        Console.WriteLine($"{metrics.RequestCount} requests in {elapsedTime} = {metrics.RequestCount / safeSeconds:F2} RPS");
+        Console.WriteLine($"{jobResult.RequestCount} requests in {elapsedTime} = {jobResult.RequestCount / safeSeconds:F2} RPS");
 
-        var missedPercent = (double)metrics.MissedRequestCount / metrics.RequestCount * 100;
-        Console.WriteLine($"{metrics.MissedRequestCount} unintended missed requests = {missedPercent:F2}%");
+        var missedPercent = (double)jobResult.MissedRequestCount / jobResult.RequestCount * 100;
+        Console.WriteLine($"{jobResult.MissedRequestCount} unintended missed requests = {missedPercent:F2}%");
+
+        using var writer = new StreamWriter(csvFilePath);
+        using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+        csv.WriteRecords(pageResults);
     }
 
-    private static async Task<LoadTesterThreadMetrics> StartThreadAsync(int threadNumber, string[] urls, PageArchiverConfiguration config, HtmlContentRetriever client, CancellationToken cancellationToken)
+    private static async Task<PageArchiverResult> StartThreadAsync(int threadNumber, Uri[] urls, PageArchiverConfiguration config, HtmlContentRetriever client, bool isSpiderPass, CancellationToken cancellationToken)
     {
         (var initialUrlIndex, var stopUrlIndex) = ThreadHelpers.GetBlockStartAndEnd(threadNumber, config.ThreadCount, urls.Length);
 
-        var metrics = new LoadTesterThreadMetrics()
-        {
-            ThreadNumber = threadNumber
-        };
+        var threadResult = new PageArchiverResult();
 
         if (initialUrlIndex == -1)
         {
-            return metrics;
+            return threadResult;
         }
 
-        // Start in a different spot per-thread.
         var urlIndex = initialUrlIndex;
 
-        try
+        while (true)
         {
-            while (true)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var url = urls[urlIndex];
+            var uri = new Uri(url);
+
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                threadResult.RequestCount++;
 
-                var url = urls[urlIndex];
+                var htmlContent = await client.GetContentAsync(url, cancellationToken);
 
-                var uri = new Uri(url);
+                await SaveHtmlContent(config, uri, htmlContent, cancellationToken);
 
-                var baseFolder = config.OutputPath.TrimEnd('/', '\\');
+                // TODO: search
 
-                var lastUriSegment = uri.Segments[^1];
-
-                var fileName = GetFileName(lastUriSegment);
-
-                var folderPath = GetFolderPath(uri, baseFolder);
-
-                var filePath = Path.Combine(folderPath, fileName);
-
-                if (!File.Exists(filePath))
-                {
-                    try
-                    {
-                        metrics.RequestCount++;
-
-                        var content = await client.GetContentAsync(url, metrics, cancellationToken);
-
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        if (config.IsVerbose)
-                        {
-                            Console.WriteLine($"Writing {content.Length} chars to {filePath}");
-                        }
-
-                        Directory.CreateDirectory(folderPath);
-
-                        await File.WriteAllTextAsync(filePath, content, cancellationToken);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error archiving {url}. {ex.Message}");
-                        metrics.MissedRequestCount++;
-                    }
-                }
-
-                if (urlIndex == stopUrlIndex)
-                {
-                    // Stop because we hit all the URLs once.
-                    break;
-                }
-
-                // Get the next URL, looping around to beginning if at the end.
-                urlIndex++;
-
-                if (config.IsDelayEnabled)
-                {
-                    await Task.Delay(500, cancellationToken);
-                }
+                // TODO: spider, normalize URLs here and and initials ones.
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // ignore
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error archiving {url}. {ex.Message}");
+                threadResult.MissedRequestCount++;
+            }
+
+            if (urlIndex == stopUrlIndex)
+            {
+                // Stop because we hit all the URLs once.
+                break;
+            }
+
+            // Get the next URL, looping around to beginning if at the end.
+            urlIndex++;
+
+            if (config.IsDelayEnabled)
+            {
+                await Task.Delay(500, cancellationToken);
+            }
         }
 
         if (config.IsVerbose)
         {
-            Console.WriteLine($"Thread {metrics.ThreadNumber} ending.");
+            Console.WriteLine($"Thread {threadNumber} ending.");
         }
 
-        return metrics;
+        return threadResult;
     }
 
-    private static string GetFolderPath(Uri uri, string baseFolder)
+    private static async Task SaveHtmlContent(PageArchiverConfiguration config, Uri uri, string content, CancellationToken cancellationToken)
     {
-        return baseFolder + string.Concat(uri.Segments[..^1]).GetSafeFilePath();
+        if (!config.SaveHtml)
+        {
+            return;
+        }
+
+        var htmlFileFolder = GetHtmlFileFolder(config, uri);
+        var htmlFileName = GetHtmlFileName(uri);
+        var htmlFilePath = Path.Combine(htmlFileFolder, htmlFileName);
+
+        if (config.IsVerbose)
+        {
+            Console.WriteLine($"Writing {content.Length} chars to {htmlFilePath}");
+        }
+
+        Directory.CreateDirectory(htmlFileFolder);
+        await File.WriteAllTextAsync(htmlFilePath, content, cancellationToken);
     }
 
-    private static string GetFileName(string lastUriSegment)
+    private static string GetHtmlFileFolder(PageArchiverConfiguration config, Uri uri)
     {
+        return Path.Combine(
+            config.OutputPath,
+            "html",
+            string.Concat(uri.Segments[..^1]).TrimStart('/'))
+        .GetSafeFilePath();
+    }
+
+    private static string GetHtmlFileName(Uri uri)
+    {
+        var lastUriSegment = uri.Segments[^1];
+
         if (lastUriSegment.IsNullOrWhiteSpace() || lastUriSegment == "/")
         {
             lastUriSegment = "index";

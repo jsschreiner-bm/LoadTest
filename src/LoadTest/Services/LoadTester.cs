@@ -62,10 +62,7 @@ public static class LoadTester
     {
         (var initialUrlIndex, var stopUrlIndex) = ThreadHelpers.GetBlockStartAndEnd(threadNumber, config.ThreadCount, urls.Length);
 
-        var metrics = new LoadTesterThreadMetrics()
-        {
-            ThreadNumber = threadNumber
-        };
+        var metrics = new LoadTesterThreadMetrics();
 
         if (initialUrlIndex == -1)
         {
@@ -75,7 +72,6 @@ public static class LoadTester
         // Defines if we hit all URLs in the list once or if we run until time limit.
         var shouldHitAllUrlsOnce = config.SecondsToRun < 1;
 
-        // Start in a different spot per-thread.
         var urlIndex = initialUrlIndex;
 
         try
@@ -137,7 +133,7 @@ public static class LoadTester
 
         if (config.IsVerbose)
         {
-            Console.WriteLine($"Thread {metrics.ThreadNumber} ending.");
+            Console.WriteLine($"Thread {threadNumber} ending.");
         }
 
         return metrics;
