@@ -1,3 +1,5 @@
+using VoidCore.Model.Text;
+
 namespace LoadTest.Helpers;
 
 public static class UriHelpers
@@ -6,7 +8,7 @@ public static class UriHelpers
     /// <summary>
     /// Will normalize local URLs to be fully-qualified, and will remove query strings and fragments.
     /// </summary>
-    public static Uri? GetNormalizedUri(this string url, string primaryUrlBase, string alternateDomains)
+    public static Uri? GetNormalizedUri(this string url, string primaryDomain, string[] alternateDomains)
     {
         try
         {
@@ -20,16 +22,9 @@ public static class UriHelpers
                 url = "/";
             }
 
-            if (url.Contains("example.com"))
-            {
-                // Removal all www then add www once to each
-                url = url.Replace("www.example.com", "example.com", StringComparison.OrdinalIgnoreCase);
-                url = url.Replace("example.com", "www.example.com", StringComparison.OrdinalIgnoreCase);
-            }
-
             if (url.StartsWith('/'))
             {
-                url = primaryUrlBase + url;
+                url = "https://" + primaryDomain + url;
             }
 
             // Remove anything after the first # or ? (query or fragment)
@@ -43,6 +38,15 @@ public static class UriHelpers
             if (string.IsNullOrWhiteSpace(url))
             {
                 return null;
+            }
+
+            var uriBuilder = new UriBuilder(url);
+
+            var alternateDomain = Array.Find(alternateDomains, x => x.EqualsIgnoreCase(uriBuilder.Host));
+
+            if (alternateDomain is not null)
+            {
+                uriBuilder.Host = primaryDomain;
             }
 
             return new Uri(url);
