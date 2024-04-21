@@ -13,7 +13,7 @@ public class PageArchiverConfiguration
     // TODO: check for unused props
     public bool IsSpiderEnabled { get; init; }
     public string PrimaryDomain { get; set; } = string.Empty;
-    public List<string> PrimaryDomainEquivalents { get; init; } = [];
+    public string[] PrimaryDomainEquivalents { get; init; } = [];
     public bool ScanCrossDomainRedirects { get; set; }
     public List<string> ExcludedPaths { get; init; } = [];
     // TODO: for search

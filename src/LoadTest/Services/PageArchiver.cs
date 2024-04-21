@@ -17,7 +17,7 @@ public static class PageArchiver
 
         var uris = (await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken))
             .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x.GetNormalizedUri(config.PrimaryUrlBase))
+            .Select(x => x.GetNormalizedUri(config.PrimaryDomain, config.PrimaryDomainEquivalents))
             .Where(x => x is not null)
             .Where(x => !config.ExcludedPaths.Exists(y => x!.PathAndQuery.StartsWith(y)))
             .Select(x => x!)
@@ -126,7 +126,7 @@ public static class PageArchiver
                 var page = await client.GetContentAsync(uri, cancellationToken);
 
                 // TODO: normalize
-                pageResult.FinalUrl = page.FinalUrl;
+                pageResult.FinalUrl = page.FinalUrl.GetNormalizedUri(config.PrimaryDomain, config.PrimaryDomainEquivalents);
 
                 await SaveHtmlContent(config, uri, page.HtmlContent, cancellationToken);
 
