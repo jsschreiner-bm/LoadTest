@@ -16,8 +16,7 @@ public class PageArchiverConfiguration
     public string[] PrimaryDomainEquivalents { get; init; } = [];
     public bool ScanCrossDomainRedirects { get; set; }
     public List<string> ExcludedPaths { get; init; } = [];
-    // TODO: for search
     public List<string> SearchTerms { get; init; } = [];
-    public string MainContentSelector { get; init; } = string.Empty;
-    public string ExcludeContentSelector { get; init; } = string.Empty;
+    public string SearchMainContentSelector { get; init; } = string.Empty;
+    public string SearchExcludeContentSelector { get; init; } = string.Empty;
 }

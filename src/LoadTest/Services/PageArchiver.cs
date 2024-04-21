@@ -18,8 +18,7 @@ public static class PageArchiver
         var uris = (await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken))
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.GetNormalizedUri(config.PrimaryDomain, config.PrimaryDomainEquivalents))
-            .Where(x => x is not null)
-            .Where(x => !config.ExcludedPaths.Exists(y => x!.PathAndQuery.StartsWith(y)))
+            .Where(x => x is not null && PathIsNotExcluded(config, x))
             .Select(x => x!)
             .ToArray();
 
@@ -60,7 +59,7 @@ public static class PageArchiver
             var newSpiderLinks = passResult.PageResults
                 .SelectMany(x => x.SpiderLinks)
                 .Distinct()
-                .Where(x => !config.ExcludedPaths.Exists(y => x.PathAndQuery.StartsWith(y)) && !previousUrls.Contains(x.ToString(), StringComparer.OrdinalIgnoreCase))
+                .Where(x => x is not null && PathIsNotExcluded(config, x) && !Array.Exists(previousUrls, y => y.EqualsIgnoreCase(x.ToString())))
                 .ToArray();
 
             uris = newSpiderLinks;
@@ -84,12 +83,22 @@ public static class PageArchiver
 
         Console.WriteLine($"{jobResult.RequestCount} requests in {elapsedTime} = {jobResult.RequestCount / safeSeconds:F2} RPS");
 
+        if (config.IsSpiderEnabled)
+        {
+            Console.WriteLine($"Spider found {spiderLinksCount} pages that weren't in the original list. Took {passes} passes.");
+        }
+
         var missedPercent = (double)jobResult.MissedRequestCount / jobResult.RequestCount * 100;
         Console.WriteLine($"{jobResult.MissedRequestCount} unintended missed requests = {missedPercent:F2}%");
 
-        using var writer = new StreamWriter(csvFilePath);
-        using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+        await using var writer = new StreamWriter(csvFilePath);
+        await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
         csv.WriteRecords(jobResult.PageResults);
+    }
+
+    private static bool PathIsNotExcluded(PageArchiverConfiguration config, Uri x)
+    {
+        return !config.ExcludedPaths.Exists(x.PathAndQuery.StartsWith);
     }
 
     private static async Task<PageArchiverResult> StartThreadAsync(int threadNumber, Uri[] urls, PageArchiverConfiguration config, HtmlContentRetriever client, bool isSpiderPass, CancellationToken cancellationToken)
@@ -113,7 +122,7 @@ public static class PageArchiver
 
             var pageResult = new PageArchiverPageResult(uri)
             {
-                IsFoundBySpider = isSpiderPass
+                IsOnlyFoundBySpider = isSpiderPass
             };
 
             threadResult.PageResults.Add(pageResult);
@@ -122,17 +131,26 @@ public static class PageArchiver
 
             try
             {
-                // TODO: return final URL, html content and status code?
                 var page = await client.GetContentAsync(uri, cancellationToken);
 
-                // TODO: normalize
                 pageResult.FinalUrl = page.FinalUrl.GetNormalizedUri(config.PrimaryDomain, config.PrimaryDomainEquivalents);
 
-                await SaveHtmlContent(config, uri, page.HtmlContent, cancellationToken);
+                if (pageResult.FinalUrl is not null)
+                {
+                    // Uri equivalency uses .ToString()
+                    // We can assume they are both normalized, so we don't need to ignore casing.
+                    pageResult.IsRedirected = uri != pageResult.FinalUrl;
+                    pageResult.IsCrossDomainRedirect = pageResult.FinalUrl.Host != uri.Host;
+                }
 
-                // TODO: search
+                if (config.ScanCrossDomainRedirects || !pageResult.IsCrossDomainRedirect)
+                {
+                    await SaveHtmlContent(config, uri, page.HtmlContent, cancellationToken);
 
-                // TODO: spider, normalize URLs.
+                    // TODO: search
+
+                    // TODO: spider, normalize URLs.
+                }
             }
             catch (OperationCanceledException)
             {
@@ -141,6 +159,7 @@ public static class PageArchiver
             catch (Exception ex)
             {
                 Console.WriteLine($"Error archiving {uri.OriginalString}. {ex.Message}");
+                pageResult.IsError = true;
                 threadResult.MissedRequestCount++;
             }
 

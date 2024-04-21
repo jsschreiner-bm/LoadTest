@@ -33,6 +33,7 @@ public class HtmlContentRetriever : IDisposable
 
     public async Task<HtmlContentRetrieverResult> GetContentAsync(Uri uri, CancellationToken cancellationToken)
     {
+        // TODO: check if ContentType text/html in both cases
         return _config.UseBrowser ?
             await GetBrowserContentAsync(uri, cancellationToken) :
             await GetServerContentAsync(uri, cancellationToken);

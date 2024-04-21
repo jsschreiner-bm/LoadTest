@@ -1,4 +1,4 @@
-
+﻿
 using PuppeteerSharp;
 
 namespace LoadTest.Helpers;

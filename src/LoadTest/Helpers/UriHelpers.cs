@@ -1,4 +1,4 @@
-using VoidCore.Model.Text;
+﻿using VoidCore.Model.Text;
 
 namespace LoadTest.Helpers;
 
@@ -49,6 +49,12 @@ public static class UriHelpers
             if (string.IsNullOrWhiteSpace(url))
             {
                 return null;
+            }
+
+            // Upgrade external URLs
+            if (!url.StartsWith("https://"))
+            {
+                url = "https://" + url;
             }
 
             var uriBuilder = new UriBuilder(url);

@@ -12,8 +12,7 @@ public class PageArchiverPageResult
     public bool IsRedirected { get; set; }
     public bool IsCrossDomainRedirect { get; set; }
     public bool IsError { get; set; }
-    public bool IsFoundBySpider { get; set; }
-    public bool IsInSitemap { get; set; }
+    public bool IsOnlyFoundBySpider { get; set; }
 
     public bool IsKeywordInSelectedHtml { get; set; }
     public bool IsKeywordInSelectedHtmlInnerText { get; set; }
