@@ -1,4 +1,4 @@
-﻿namespace LoadTest.Services;
+﻿namespace LoadTest.Models;
 
 public class PageArchiverPageResult
 {
@@ -8,13 +8,19 @@ public class PageArchiverPageResult
     }
 
     public Uri Url { get; }
+
     public Uri? FinalUrl { get; set; }
+
     public bool IsRedirected { get; set; }
+
     public bool IsCrossDomainRedirect { get; set; }
+
     public bool IsError { get; set; }
+
     public bool IsOnlyFoundBySpider { get; set; }
 
     public bool IsKeywordInSelectedHtml { get; set; }
+
     public bool IsKeywordInSelectedHtmlInnerText { get; set; }
 
     public List<Uri> SpiderLinks { get; set; } = [];

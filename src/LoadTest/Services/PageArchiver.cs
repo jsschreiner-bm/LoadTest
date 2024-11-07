@@ -1,24 +1,34 @@
 ﻿using CsvHelper;
 using LoadTest.Helpers;
+using LoadTest.Models;
 using System.Diagnostics;
 using System.Globalization;
 using VoidCore.Model.Text;
 
 namespace LoadTest.Services;
 
-public static class PageArchiver
+public class PageArchiver
 {
+    private readonly UrlsRetriever _urlsRetriever;
+    private readonly HtmlContentRetriever _htmlContentRetriever;
+
+    public PageArchiver(UrlsRetriever urlsRetriever, HtmlContentRetriever htmlContentRetriever)
+    {
+        _urlsRetriever = urlsRetriever;
+        _htmlContentRetriever = htmlContentRetriever;
+    }
+
     /// <summary>
     /// Saves a copy of the page HTML.
     /// </summary>
-    public static async Task ArchiveHtmlAsync(PageArchiverConfiguration config, CancellationToken cancellationToken)
+    public async Task ArchiveHtmlAsync(PageArchiverOptions options, CancellationToken cancellationToken)
     {
-        var csvFilePath = $"{config.OutputPath.TrimEnd('/')}/{DateTime.Now:yyyyMMdd_HHmmss}_{nameof(PageArchiver)}.csv";
+        var csvFilePath = $"{options.OutputPath.TrimEnd('/')}/{DateTime.Now:yyyyMMdd_HHmmss}_{nameof(PageArchiver)}.csv";
 
-        var uris = (await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken))
+        var uris = (await _urlsRetriever.GetUrlsAsync(options.SitemapUrl, cancellationToken))
             .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x.GetNormalizedUri(config.PrimaryDomain, config.PrimaryDomainEquivalents))
-            .Where(x => x is not null && PathIsNotExcluded(config, x))
+            .Select(x => x.GetNormalizedUri(options.PrimaryDomain, options.PrimaryDomainEquivalents))
+            .Where(x => x is not null && PathIsNotExcluded(options, x))
             .Select(x => x!)
             .ToArray();
 
@@ -29,9 +39,6 @@ public static class PageArchiver
         }
 
         Console.WriteLine("Performing HTML archive. Press Ctrl+C to stop.");
-
-        using var client = new HtmlContentRetriever(config);
-        await client.Init();
 
         var startTime = Stopwatch.GetTimestamp();
 
@@ -46,8 +53,8 @@ public static class PageArchiver
             var isSpiderPass = passes > 1;
 
             var tasks = Enumerable
-                .Range(0, config.ThreadCount)
-                .Select(i => StartThreadAsync(i, uris, config, client, isSpiderPass, cancellationToken))
+                .Range(0, options.ThreadCount)
+                .Select(i => StartThreadAsync(i, uris, options, _htmlContentRetriever, isSpiderPass, cancellationToken))
                 .ToArray();
 
             var passResult = (await Task.WhenAll(tasks)).Combine();
@@ -59,7 +66,7 @@ public static class PageArchiver
             var newSpiderLinks = passResult.PageResults
                 .SelectMany(x => x.SpiderLinks)
                 .Distinct()
-                .Where(x => x is not null && PathIsNotExcluded(config, x) && !Array.Exists(previousUrls, y => y.EqualsIgnoreCase(x.ToString())))
+                .Where(x => x is not null && PathIsNotExcluded(options, x) && !Array.Exists(previousUrls, y => y.EqualsIgnoreCase(x.ToString())))
                 .ToArray();
 
             uris = newSpiderLinks;
@@ -83,7 +90,7 @@ public static class PageArchiver
 
         Console.WriteLine($"{jobResult.RequestCount} requests in {elapsedTime} = {jobResult.RequestCount / safeSeconds:F2} RPS");
 
-        if (config.IsSpiderEnabled)
+        if (options.IsSpiderEnabled)
         {
             Console.WriteLine($"Spider found {spiderLinksCount} pages that weren't in the original list. Took {passes} passes.");
         }
@@ -96,14 +103,14 @@ public static class PageArchiver
         csv.WriteRecords(jobResult.PageResults);
     }
 
-    private static bool PathIsNotExcluded(PageArchiverConfiguration config, Uri x)
+    private static bool PathIsNotExcluded(PageArchiverOptions config, Uri x)
     {
         return !config.ExcludedPaths.Exists(x.PathAndQuery.StartsWith);
     }
 
-    private static async Task<PageArchiverResult> StartThreadAsync(int threadNumber, Uri[] urls, PageArchiverConfiguration config, HtmlContentRetriever client, bool isSpiderPass, CancellationToken cancellationToken)
+    private static async Task<PageArchiverResult> StartThreadAsync(int threadNumber, Uri[] urls, PageArchiverOptions options, HtmlContentRetriever client, bool isSpiderPass, CancellationToken cancellationToken)
     {
-        (var initialUrlIndex, var stopUrlIndex) = ThreadHelpers.GetBlockStartAndEnd(threadNumber, config.ThreadCount, urls.Length);
+        (var initialUrlIndex, var stopUrlIndex) = ThreadHelpers.GetBlockStartAndEnd(threadNumber, options.ThreadCount, urls.Length);
 
         var threadResult = new PageArchiverResult();
 
@@ -131,9 +138,9 @@ public static class PageArchiver
 
             try
             {
-                var page = await client.GetContentAsync(uri, cancellationToken);
+                var page = await client.GetContentAsync(options, uri, cancellationToken);
 
-                pageResult.FinalUrl = page.FinalUrl.GetNormalizedUri(config.PrimaryDomain, config.PrimaryDomainEquivalents);
+                pageResult.FinalUrl = page.FinalUrl.GetNormalizedUri(options.PrimaryDomain, options.PrimaryDomainEquivalents);
 
                 if (pageResult.FinalUrl is not null)
                 {
@@ -143,11 +150,11 @@ public static class PageArchiver
                     pageResult.IsCrossDomainRedirect = pageResult.FinalUrl.Host != uri.Host;
                 }
 
-                if (config.ScanCrossDomainRedirects || !pageResult.IsCrossDomainRedirect)
+                if (options.ScanCrossDomainRedirects || !pageResult.IsCrossDomainRedirect)
                 {
-                    await SaveHtmlContent(config, uri, page.HtmlContent, cancellationToken);
+                    await SaveHtmlContent(options, uri, page.HtmlContent, cancellationToken);
 
-                    // TODO: search
+                    // TODO: search, include/exclude selectors
 
                     // TODO: spider, normalize URLs.
                 }
@@ -172,13 +179,13 @@ public static class PageArchiver
             // Get the next URL, looping around to beginning if at the end.
             urlIndex++;
 
-            if (config.IsDelayEnabled)
+            if (options.IsDelayEnabled)
             {
                 await Task.Delay(500, cancellationToken);
             }
         }
 
-        if (config.IsVerbose)
+        if (options.IsVerbose)
         {
             Console.WriteLine($"Thread {threadNumber} ending.");
         }
@@ -186,18 +193,13 @@ public static class PageArchiver
         return threadResult;
     }
 
-    private static async Task SaveHtmlContent(PageArchiverConfiguration config, Uri uri, string content, CancellationToken cancellationToken)
+    private static async Task SaveHtmlContent(PageArchiverOptions options, Uri uri, string content, CancellationToken cancellationToken)
     {
-        if (!config.SaveHtml)
-        {
-            return;
-        }
-
-        var htmlFileFolder = GetHtmlFileFolder(config, uri);
+        var htmlFileFolder = GetHtmlFileFolder(options, uri);
         var htmlFileName = GetHtmlFileName(uri);
         var htmlFilePath = Path.Combine(htmlFileFolder, htmlFileName);
 
-        if (config.IsVerbose)
+        if (options.IsVerbose)
         {
             Console.WriteLine($"Writing {content.Length} chars to {htmlFilePath}");
         }
@@ -206,7 +208,7 @@ public static class PageArchiver
         await File.WriteAllTextAsync(htmlFilePath, content, cancellationToken);
     }
 
-    private static string GetHtmlFileFolder(PageArchiverConfiguration config, Uri uri)
+    private static string GetHtmlFileFolder(PageArchiverOptions config, Uri uri)
     {
         return Path.Combine(
             config.OutputPath,

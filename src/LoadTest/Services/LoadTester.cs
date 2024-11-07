@@ -1,17 +1,27 @@
 ﻿using LoadTest.Helpers;
+using LoadTest.Models;
 using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace LoadTest.Services;
 
-public static class LoadTester
+public class LoadTester
 {
+    private readonly HttpClient _httpClient;
+    private readonly UrlsRetriever _urlsRetriever;
+
+    public LoadTester(HttpClient httpClient, UrlsRetriever urlsRetriever)
+    {
+        _httpClient = httpClient;
+        _urlsRetriever = urlsRetriever;
+    }
+
     /// <summary>
     /// Request URLs and log metrics.
     /// </summary>
-    public static async Task RunLoadTestAsync(LoadTesterConfiguration config, CancellationToken cancellationToken)
+    public async Task RunLoadTestAsync(LoadTesterOptions options, CancellationToken cancellationToken)
     {
-        var urls = await UrlsRetriever.GetUrlsAsync(config.SitemapUrl, cancellationToken);
+        var urls = await _urlsRetriever.GetUrlsAsync(options.SitemapUrl, cancellationToken);
 
         if (urls.Length == 0)
         {
@@ -23,11 +33,9 @@ public static class LoadTester
 
         var startTime = Stopwatch.GetTimestamp();
 
-        using var client = new HttpClient();
-
         var tasks = Enumerable
-            .Range(0, config.ThreadCount)
-            .Select(i => StartThreadAsync(i, urls, startTime, config, client, cancellationToken))
+            .Range(0, options.ThreadCount)
+            .Select(i => StartThreadAsync(i, urls, startTime, options, _httpClient, cancellationToken))
             .ToArray();
 
         var metricCollection = await Task.WhenAll(tasks);
@@ -58,9 +66,10 @@ public static class LoadTester
         Console.WriteLine($"{metrics.MissedRequestCount} unintended missed requests = {missedPercent:F2}%");
     }
 
-    private static async Task<LoadTesterThreadMetrics> StartThreadAsync(int threadNumber, string[] urls, long startTime, LoadTesterConfiguration config, HttpClient client, CancellationToken cancellationToken)
+    private static async Task<LoadTesterThreadMetrics> StartThreadAsync(int threadNumber, string[] urls, long startTime,
+        LoadTesterOptions options, HttpClient httpClient, CancellationToken cancellationToken)
     {
-        (var initialUrlIndex, var stopUrlIndex) = ThreadHelpers.GetBlockStartAndEnd(threadNumber, config.ThreadCount, urls.Length);
+        (var initialUrlIndex, var stopUrlIndex) = ThreadHelpers.GetBlockStartAndEnd(threadNumber, options.ThreadCount, urls.Length);
 
         var metrics = new LoadTesterThreadMetrics();
 
@@ -70,7 +79,7 @@ public static class LoadTester
         }
 
         // Defines if we hit all URLs in the list once or if we run until time limit.
-        var shouldHitAllUrlsOnce = config.SecondsToRun < 1;
+        var shouldHitAllUrlsOnce = options.SecondsToRun < 1;
 
         var urlIndex = initialUrlIndex;
 
@@ -79,15 +88,17 @@ public static class LoadTester
             while (true)
             {
                 var url = urls[urlIndex];
-                var shouldForce404 = config.ChanceOf404 >= 100 || (config.ChanceOf404 > 0 && RandomNumberGenerator.GetInt32(0, 100) < config.ChanceOf404);
+
+                var shouldForce404 = options.ChanceOf404 >= 100 || (options.ChanceOf404 > 0
+                    && RandomNumberGenerator.GetInt32(0, 100) < options.ChanceOf404);
 
                 if (shouldForce404)
                 {
                     url += Guid.NewGuid().ToString();
                 }
 
-                var request = new HttpRequestMessage(config.RequestMethod, url);
-                var response = await client.SendAsync(request, cancellationToken);
+                var request = new HttpRequestMessage(options.RequestMethod, url);
+                var response = await httpClient.SendAsync(request, cancellationToken);
 
                 metrics.RequestCount++;
 
@@ -98,7 +109,7 @@ public static class LoadTester
                     metrics.MissedRequestCount++;
                 }
 
-                if (config.IsVerbose || isUnintendedMiss)
+                if (options.IsVerbose || isUnintendedMiss)
                 {
                     Console.WriteLine($"{response.StatusCode} {url}");
                 }
@@ -111,7 +122,7 @@ public static class LoadTester
                         break;
                     }
                 }
-                else if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds >= config.SecondsToRun * 1000)
+                else if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds >= options.SecondsToRun * 1000)
                 {
                     // Stop because time limit.
                     break;
@@ -120,7 +131,7 @@ public static class LoadTester
                 // Get the next URL, looping around to beginning if at the end.
                 urlIndex = (urlIndex + 1) % urls.Length;
 
-                if (config.IsDelayEnabled)
+                if (options.IsDelayEnabled)
                 {
                     await Task.Delay(500, cancellationToken);
                 }
@@ -131,7 +142,7 @@ public static class LoadTester
             // ignore
         }
 
-        if (config.IsVerbose)
+        if (options.IsVerbose)
         {
             Console.WriteLine($"Thread {threadNumber} ending.");
         }

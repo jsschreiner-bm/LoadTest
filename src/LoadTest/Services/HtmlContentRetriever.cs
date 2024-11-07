@@ -1,53 +1,40 @@
 ﻿using LoadTest.Helpers;
+using LoadTest.Models;
 using PuppeteerSharp;
 
 namespace LoadTest.Services;
 
 public class HtmlContentRetriever : IDisposable
 {
-    private HttpClient? _httpClient;
+    private readonly HttpClient _httpClient;
+    private readonly SemaphoreSlim _semaphore = new(1);
     private IBrowser? _browser;
-    private readonly PageArchiverConfiguration _config;
     private bool _disposedValue;
 
-    public HtmlContentRetriever(PageArchiverConfiguration config)
+    public HtmlContentRetriever(HttpClient httpClient)
     {
-        _config = config;
+        _httpClient = httpClient;
     }
 
-    public async Task Init()
-    {
-        using var browserFetcher = new BrowserFetcher();
-        await browserFetcher.DownloadAsync();
-
-        _browser = await Puppeteer.LaunchAsync(new LaunchOptions
-        {
-            Headless = true,
-            DefaultViewport = new ViewPortOptions
-            {
-                Width = 1920,
-                Height = 1080
-            }
-        });
-    }
-
-    public async Task<HtmlContentRetrieverResult> GetContentAsync(Uri uri, CancellationToken cancellationToken)
+    public async Task<HtmlContentRetrieverResult> GetContentAsync(PageArchiverOptions config, Uri uri, CancellationToken cancellationToken)
     {
         // TODO: check if ContentType text/html in both cases
-        return _config.UseBrowser ?
-            await GetBrowserContentAsync(uri, cancellationToken) :
-            await GetServerContentAsync(uri, cancellationToken);
+        return config.UseBrowser ?
+            await GetBrowserContentAsync(config, uri, cancellationToken) :
+            await GetServerContentAsync(config, uri, cancellationToken);
     }
 
-    private async Task<HtmlContentRetrieverResult> GetBrowserContentAsync(Uri uri, CancellationToken cancellationToken)
+    private async Task<HtmlContentRetrieverResult> GetBrowserContentAsync(PageArchiverOptions config, Uri uri, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        await using var page = await Browser.NewPageAsync();
+        var browser = await EnsureBrowserAsync(cancellationToken);
+
+        await using var page = await browser.NewPageAsync();
 
         page.PageError += (sender, eventArgs) =>
         {
-            if (_config.LogBrowserConsoleError)
+            if (config.LogBrowserConsoleError)
             {
                 Console.WriteLine($"Browser console error on {uri.OriginalString}: {eventArgs.Message}");
             }
@@ -57,7 +44,7 @@ public class HtmlContentRetriever : IDisposable
 
         response.EnsureSuccessStatusCode();
 
-        if (_config.IsVerbose)
+        if (config.IsVerbose)
         {
             Console.WriteLine($"{response.Status} {uri.OriginalString}");
         }
@@ -77,15 +64,13 @@ public class HtmlContentRetriever : IDisposable
         };
     }
 
-    private async Task<HtmlContentRetrieverResult> GetServerContentAsync(Uri uri, CancellationToken cancellationToken)
+    private async Task<HtmlContentRetrieverResult> GetServerContentAsync(PageArchiverOptions config, Uri uri, CancellationToken cancellationToken)
     {
-        var client = HttpClient;
-
-        var response = await client.GetAsync(uri, cancellationToken);
+        var response = await _httpClient.GetAsync(uri, cancellationToken);
 
         response.EnsureSuccessStatusCode();
 
-        if (_config.IsVerbose)
+        if (config.IsVerbose)
         {
             Console.WriteLine($"{response.StatusCode} {uri.OriginalString}");
         }
@@ -99,9 +84,40 @@ public class HtmlContentRetriever : IDisposable
         };
     }
 
-    private IBrowser Browser => _browser ?? throw new InvalidOperationException("Call Init() before calling GetContent()");
+    private async Task<IBrowser> EnsureBrowserAsync(CancellationToken cancellationToken)
+    {
+        if (_browser is not null)
+        {
+            return _browser;
+        }
 
-    private HttpClient HttpClient => _httpClient ??= new();
+        await _semaphore.WaitAsync(cancellationToken);
+
+        try
+        {
+            return _browser ??= await CreateBrowserAsync();
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    private static async Task<IBrowser> CreateBrowserAsync()
+    {
+        using var browserFetcher = new BrowserFetcher();
+        await browserFetcher.DownloadAsync();
+
+        return await Puppeteer.LaunchAsync(new LaunchOptions
+        {
+            Headless = true,
+            DefaultViewport = new ViewPortOptions
+            {
+                Width = 1920,
+                Height = 1080
+            }
+        });
+    }
 
     protected virtual void Dispose(bool disposing)
     {
