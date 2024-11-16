@@ -7,14 +7,14 @@ public static class UriHelpers
     /// <summary>
     /// Will normalize local URLs to be fully-qualified, and will remove query strings and fragments.
     /// </summary>
-    public static Uri? GetNormalizedUri(this string url, string primaryDomain, string[] primaryDomainEquivalents)
+    public static Uri? GetNormalizedUri(this string url, string? primaryDomain, string[]? primaryDomainEquivalents)
     {
         try
         {
             url = url.Trim();
             url = url.ToLowerInvariant();
 
-            primaryDomain = primaryDomain.ToLowerInvariant();
+            primaryDomain = primaryDomain?.ToLowerInvariant();
 
             if (url.StartsWith("//"))
             {
@@ -25,7 +25,7 @@ public static class UriHelpers
                 url = "https:" + url[5..];
             }
 
-            if (url.StartsWith('/'))
+            if (url.StartsWith('/') && !primaryDomain.IsNullOrWhiteSpace())
             {
                 url = "https://" + primaryDomain.TrimEnd('/') + url;
             }

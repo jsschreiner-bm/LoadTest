@@ -34,7 +34,7 @@ public class HtmlContentRetriever : IDisposable
 
         page.PageError += (sender, eventArgs) =>
         {
-            if (config.LogBrowserConsoleError)
+            if (config.LogBrowserConsoleErrors)
             {
                 Console.WriteLine($"Browser console error on {uri.OriginalString}: {eventArgs.Message}");
             }
