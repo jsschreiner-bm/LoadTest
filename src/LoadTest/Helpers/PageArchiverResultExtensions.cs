@@ -1,4 +1,6 @@
-namespace LoadTest.Models;
+using LoadTest.Models;
+
+namespace LoadTest.Helpers;
 
 public static class PageArchiverResultExtensions
 {

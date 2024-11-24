@@ -29,6 +29,7 @@ public class PageArchiver
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.GetNormalizedUri(options.PrimaryDomain, options.PrimaryDomainEquivalents))
             .Where(x => x is not null && PathIsNotExcluded(options, x))
+            .Distinct()
             .Select(x => x!)
             .ToArray();
 
