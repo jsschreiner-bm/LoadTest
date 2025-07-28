@@ -16,7 +16,7 @@ public class HtmlContentRetriever : IDisposable
         _httpClient = httpClient;
     }
 
-    public async Task<HtmlContentRetrieverResult> GetContentAsync(PageArchiverOptions config, Uri uri, CancellationToken cancellationToken)
+    public async Task<HtmlContentRetrieverResult> GetContentAsync(PageArchiveOptions config, Uri uri, CancellationToken cancellationToken)
     {
         // TODO: check if ContentType text/html in both cases
         return config.UseBrowser ?
@@ -24,7 +24,7 @@ public class HtmlContentRetriever : IDisposable
             await GetServerContentAsync(config, uri, cancellationToken);
     }
 
-    private async Task<HtmlContentRetrieverResult> GetBrowserContentAsync(PageArchiverOptions config, Uri uri, CancellationToken cancellationToken)
+    private async Task<HtmlContentRetrieverResult> GetBrowserContentAsync(PageArchiveOptions config, Uri uri, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -64,7 +64,7 @@ public class HtmlContentRetriever : IDisposable
         };
     }
 
-    private async Task<HtmlContentRetrieverResult> GetServerContentAsync(PageArchiverOptions config, Uri uri, CancellationToken cancellationToken)
+    private async Task<HtmlContentRetrieverResult> GetServerContentAsync(PageArchiveOptions config, Uri uri, CancellationToken cancellationToken)
     {
         var response = await _httpClient.GetAsync(uri, cancellationToken);
 

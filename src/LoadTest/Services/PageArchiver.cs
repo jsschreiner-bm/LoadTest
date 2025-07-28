@@ -21,7 +21,7 @@ public class PageArchiver
     /// <summary>
     /// Saves a copy of the page HTML.
     /// </summary>
-    public async Task ArchiveHtmlAsync(PageArchiverOptions options, CancellationToken cancellationToken)
+    public async Task ArchiveHtmlAsync(PageArchiveOptions options, CancellationToken cancellationToken)
     {
         var csvFilePath = $"{options.OutputPath.TrimEnd('/')}/{DateTime.Now:yyyyMMdd_HHmmss}_{nameof(PageArchiver)}.csv";
 
@@ -43,7 +43,7 @@ public class PageArchiver
 
         var startTime = Stopwatch.GetTimestamp();
 
-        var jobResult = new PageArchiverResult();
+        var jobResult = new PageArchiveResult();
         var spiderLinksCount = 0;
         var passes = 0;
 
@@ -104,16 +104,16 @@ public class PageArchiver
         csv.WriteRecords(jobResult.PageResults);
     }
 
-    private static bool PathIsNotExcluded(PageArchiverOptions config, Uri x)
+    private static bool PathIsNotExcluded(PageArchiveOptions config, Uri uri)
     {
-        return !config.ExcludedPaths.Exists(x.PathAndQuery.StartsWith);
+        return !(config.ExcludedPaths?.Exists(x => uri.PathAndQuery.StartsWith(x, StringComparison.OrdinalIgnoreCase)) ?? false);
     }
 
-    private static async Task<PageArchiverResult> StartThreadAsync(int threadNumber, Uri[] urls, PageArchiverOptions options, HtmlContentRetriever client, bool isSpiderPass, CancellationToken cancellationToken)
+    private static async Task<PageArchiveResult> StartThreadAsync(int threadNumber, Uri[] urls, PageArchiveOptions options, HtmlContentRetriever client, bool isSpiderPass, CancellationToken cancellationToken)
     {
         (var initialUrlIndex, var stopUrlIndex) = ThreadHelpers.GetBlockStartAndEnd(threadNumber, options.ThreadCount, urls.Length);
 
-        var threadResult = new PageArchiverResult();
+        var threadResult = new PageArchiveResult();
 
         if (initialUrlIndex == -1)
         {
@@ -128,7 +128,7 @@ public class PageArchiver
 
             var uri = urls[urlIndex] ?? throw new InvalidOperationException($"URL at index {urlIndex} is null.");
 
-            var pageResult = new PageArchiverPageResult(uri)
+            var pageResult = new PageArchivePageResult(uri)
             {
                 IsOnlyFoundBySpider = isSpiderPass
             };
@@ -194,7 +194,7 @@ public class PageArchiver
         return threadResult;
     }
 
-    private static async Task SaveHtmlContent(PageArchiverOptions options, Uri uri, string content, CancellationToken cancellationToken)
+    private static async Task SaveHtmlContent(PageArchiveOptions options, Uri uri, string content, CancellationToken cancellationToken)
     {
         var htmlFileFolder = GetHtmlFileFolder(options, uri);
         var htmlFileName = GetHtmlFileName(uri);
@@ -209,7 +209,7 @@ public class PageArchiver
         await File.WriteAllTextAsync(htmlFilePath, content, cancellationToken);
     }
 
-    private static string GetHtmlFileFolder(PageArchiverOptions config, Uri uri)
+    private static string GetHtmlFileFolder(PageArchiveOptions config, Uri uri)
     {
         return Path.Combine(
             config.OutputPath,

@@ -19,7 +19,7 @@ public class LoadTester
     /// <summary>
     /// Request URLs and log metrics.
     /// </summary>
-    public async Task RunLoadTestAsync(LoadTesterOptions options, CancellationToken cancellationToken)
+    public async Task RunLoadTestAsync(LoadTestOptions options, CancellationToken cancellationToken)
     {
         var urls = await _urlsRetriever.GetUrlsAsync(options.SitemapUrl, cancellationToken);
 
@@ -40,7 +40,7 @@ public class LoadTester
 
         var metricCollection = await Task.WhenAll(tasks);
 
-        var metrics = metricCollection.Aggregate(new LoadTesterThreadMetrics(), (acc, x) =>
+        var metrics = metricCollection.Aggregate(new LoadTestThreadMetrics(), (acc, x) =>
         {
             acc.RequestCount += x.RequestCount;
             acc.MissedRequestCount += x.MissedRequestCount;
@@ -66,12 +66,12 @@ public class LoadTester
         Console.WriteLine($"{metrics.MissedRequestCount} unintended missed requests = {missedPercent:F2}%");
     }
 
-    private static async Task<LoadTesterThreadMetrics> StartThreadAsync(int threadNumber, string[] urls, long startTime,
-        LoadTesterOptions options, HttpClient httpClient, CancellationToken cancellationToken)
+    private static async Task<LoadTestThreadMetrics> StartThreadAsync(int threadNumber, string[] urls, long startTime,
+        LoadTestOptions options, HttpClient httpClient, CancellationToken cancellationToken)
     {
         (var initialUrlIndex, var stopUrlIndex) = ThreadHelpers.GetBlockStartAndEnd(threadNumber, options.ThreadCount, urls.Length);
 
-        var metrics = new LoadTesterThreadMetrics();
+        var metrics = new LoadTestThreadMetrics();
 
         if (initialUrlIndex == -1)
         {

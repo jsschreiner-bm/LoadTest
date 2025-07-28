@@ -1,8 +1,8 @@
 ﻿namespace LoadTest.Models;
 
-public class PageArchiverPageResult
+public class PageArchivePageResult
 {
-    public PageArchiverPageResult(Uri uri)
+    public PageArchivePageResult(Uri uri)
     {
         Url = uri;
     }

@@ -2,7 +2,7 @@
 
 namespace LoadTest.Models;
 
-public class LoadTesterOptions : ICommandParameterSet
+public class LoadTestOptions : ICommandParameterSet
 {
     [Option("path", ['p'], Description = "URL to a sitemap or file path to a URL list. If file path ends in \".xml\", file is assumed a local copy of a sitemap.", ValueName = "path")]
     public string SitemapUrl { get; set; } = string.Empty;

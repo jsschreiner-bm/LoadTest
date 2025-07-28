@@ -4,13 +4,13 @@ namespace LoadTest.Helpers;
 
 public static class PageArchiverResultExtensions
 {
-    public static PageArchiverResult Combine(this IEnumerable<PageArchiverResult> metricCollection) =>
-        new PageArchiverResult().Combine(metricCollection);
+    public static PageArchiveResult Combine(this IEnumerable<PageArchiveResult> metricCollection) =>
+        new PageArchiveResult().Combine(metricCollection);
 
-    public static PageArchiverResult Combine(this PageArchiverResult metrics, IEnumerable<PageArchiverResult> metricCollection) =>
+    public static PageArchiveResult Combine(this PageArchiveResult metrics, IEnumerable<PageArchiveResult> metricCollection) =>
         metricCollection.Aggregate(metrics, (acc, x) => acc.Combine(x));
 
-    public static PageArchiverResult Combine(this PageArchiverResult metrics, PageArchiverResult newMetrics) => new()
+    public static PageArchiveResult Combine(this PageArchiveResult metrics, PageArchiveResult newMetrics) => new()
     {
         RequestCount = metrics.RequestCount + newMetrics.RequestCount,
         MissedRequestCount = metrics.MissedRequestCount + newMetrics.MissedRequestCount,

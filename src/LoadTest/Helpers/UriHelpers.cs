@@ -16,11 +16,11 @@ public static class UriHelpers
 
             primaryDomain = primaryDomain?.ToLowerInvariant();
 
-            if (url.StartsWith("//"))
+            if (url.StartsWith("//", StringComparison.OrdinalIgnoreCase))
             {
                 url = "https:" + url;
             }
-            else if (url.StartsWith("http://"))
+            else if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
             {
                 url = "https:" + url[5..];
             }
